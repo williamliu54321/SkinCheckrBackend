@@ -7,12 +7,27 @@ const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
 exports.analyzeImage = onCall(
   { secrets: [OPENAI_API_KEY] },
   async (request) => {
+    // --- DEBUG 1: Log that the function was successfully triggered ---
+    console.log("✅ Function 'analyzeImage' triggered.");
+
+    // (Optional) If you have authentication, log the user ID.
+    // if (request.auth) {
+    //   console.log(`Authenticated user: ${request.auth.uid}`);
+    // } else {
+    //   console.warn("⚠️ Warning: Function was called by an unauthenticated user.");
+    // }
+
     const imageBase64 = request.data.imageBase64;
     if (!imageBase64 || typeof imageBase64 !== "string") {
+      // --- DEBUG 2: Log validation failures ---
+      console.error("❌ Validation Error: 'imageBase64' is missing or not a string.");
       throw new HttpsError("invalid-argument", "The function must be called with an 'imageBase64' string argument.");
     }
+    
+    // --- DEBUG 3: Log the size of the received data to ensure it's not empty ---
+    console.log(`👍 Received image data. Base64 String Length: ${imageBase64.length}`);
 
-    // Initialize OpenAI client at runtime (can now access secret)
+    // Initialize OpenAI client at runtime
     const openai = new OpenAI({
       apiKey: OPENAI_API_KEY.value(),
     });
@@ -31,6 +46,10 @@ exports.analyzeImage = onCall(
     `;
 
     try {
+      // --- DEBUG 4: Log right before making the expensive API call ---
+      console.log("▶️ Sending request to OpenAI API...");
+      const startTime = Date.now(); // Start a timer
+
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
         response_format: { type: "json_object" },
@@ -49,11 +68,24 @@ exports.analyzeImage = onCall(
         max_tokens: 500,
       });
 
+      const duration = Date.now() - startTime;
+      // --- DEBUG 5: Log the raw response from OpenAI ---
+      // This is the most important log for debugging the AI's output.
+      console.log(`✅ Received response from OpenAI in ${duration}ms.`);
       const jsonString = response.choices[0].message.content;
+      console.log("📜 Raw OpenAI Response:", jsonString);
+
+      // Parse the JSON string from OpenAI into a JavaScript object.
       const analysisData = JSON.parse(jsonString);
+
+      // --- DEBUG 6: Log the final data being sent back to the app ---
+      console.log("✅ Successfully parsed JSON. Sending result to client.");
       return { result: analysisData };
+
     } catch (error) {
-      console.error("Error calling OpenAI API:", error);
+      // --- DEBUG 7: Log any errors that occur during the process ---
+      // This is crucial for understanding failures.
+      console.error("❌ FATAL ERROR: Error during OpenAI call or JSON parsing.", error);
       throw new HttpsError("internal", "Failed to analyze the image due to an internal server error.", error);
     }
   }
