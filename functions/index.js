@@ -41,7 +41,7 @@ exports.analyzeImage = onCall(
         "asymmetry": "Low", "Medium", or "High",
         "border": "Low", "Medium", or "High",
         "color": "Low", "Medium", or "High",
-        "aiNotes": "Two-sentence summary ending with: 'This is not a medical diagnosis. Please consult a dermatologist for any health concerns.'"
+        "aiNotes": "Two-sentence summary, and end with advice on what to do next."
       }
     `;
 
