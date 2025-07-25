@@ -34,7 +34,7 @@ exports.analyzeImage = onCall(
 
     const prompt = `
       You are an expert assistant for a skin health application named 'Skin Checkr'.
-      Analyze the mole image using the "ABCDE" melanoma awareness framework. If there is no mole, then respond with json but just put 0 for everything.
+      Analyze the mole image using the "ABCDE" melanoma awareness framework. If there is no mole, then respond with json but just put N/A for everything.
       Respond ONLY with valid JSON:
       {
         "riskLevel": "Low Risk", "Medium Risk", or "High Risk",
