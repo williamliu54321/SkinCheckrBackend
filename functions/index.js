@@ -29,55 +29,67 @@ exports.analyzeSkincareImage = onCall(
       apiKey: apiKey,
     });
 
-    // FOR APP STORE COMPLIANCE: Always use skincare analysis
-    // TO RESTORE MOLE DETECTION: Change this to detect face vs other skin areas
-    const analysisType = "skincare";
-    console.log("✅ Using skincare analysis for app store compliance");
+    // Easy mode switching - change this variable to switch analysis types
+    const ANALYSIS_MODE = "medical"; // Change to "medical" or "skincare" to switch modes
+    console.log(`✅ Using ${ANALYSIS_MODE} analysis mode`);
     
     try {
-      // Skincare analysis prompt
-      const analysisPrompt = `
-        You are an expert dermatology and skincare assistant for a skincare recommendation application named 'Skincare Advisor'.
-        
-        IMPORTANT: First determine if this image contains human skin (face, hands, arms, legs, or any body part).
-        
-        If the image does NOT contain human skin (e.g., it's an inanimate object, animal, landscape, food, etc.), respond with:
-        {
-          "analysisType": "error",
-          "noFaceDetected": true,
-          "skinType": "N/A",
-          "concerns": [],
-          "moistureLevel": "N/A",
-          "oilinessLevel": "N/A",
-          "sensitivity": "N/A",
-          "recommendations": "No human skin detected in the image. Please upload a photo showing human skin for analysis.",
-          "productSuggestions": []
-        }
-        
-        If the image DOES contain human skin (even if not a face - hands, arms, etc. are fine), analyze it:
-        - If it's a face: provide detailed facial skincare analysis
-        - If it's another body part (hand, arm, leg, etc.): provide general skin analysis for that area
-        - Overall skin type (Dry, Oily, Combination, Normal, Sensitive)
-        - Visible skin concerns and problem areas
-        - Moisture and oil levels
-        - Signs of sensitivity or irritation
-        - Appropriate recommendations for the skin area shown
-        
-        For valid human skin images, respond with JSON in this format:
-        {
-          "analysisType": "skincare",
-          "noFaceDetected": false,
-          "skinType": "one of: Dry, Oily, Combination, Normal, Sensitive",
-          "concerns": ["array of identified concerns like Dryness, Irritation, Sun Damage, Age Spots, Rough Texture, etc."],
-          "moistureLevel": "Low, Medium, or High",
-          "oilinessLevel": "Low, Medium, or High", 
-          "sensitivity": "Low, Medium, or High",
-          "recommendations": "Detailed paragraph with specific skincare recommendations. If it's a face, focus on facial skincare routine. If it's hands/arms/body, provide appropriate care advice for that body part including moisturizing, sun protection, etc. Always include medical citation links at the end, such as: Sources: American Academy of Dermatology (https://www.aad.org), Mayo Clinic (https://www.mayoclinic.org), or other reputable medical sources.",
-          "productSuggestions": ["array of 4-6 specific product types appropriate for the skin area shown"]
-        }
-      `;
+      let analysisPrompt;
+      
+      if (ANALYSIS_MODE === "skincare") {
+        analysisPrompt = `
+          You are an expert skincare assistant. Please respond with a JSON object.
+          
+          IMPORTANT: First determine if this image contains a human FACE specifically (not just any skin).
+          
+          If the image does NOT contain a clear human face, respond with JSON:
+          {
+            "analysisError": true,
+            "concerns": [],
+            "metrics": [],
+            "recommendations": "Please upload a clear photo of your face for skincare analysis."
+          }
+          
+          If the image DOES contain a human face, analyze it and respond with JSON:
+          {
+            "analysisError": false,
+            "concerns": ["array of facial skin concerns like Acne, Dryness, Dark Spots, Fine Lines, etc."],
+            "metrics": [
+              {"label": "Moisture Level", "value": "Low/Medium/High"},
+              {"label": "Oiliness Level", "value": "Low/Medium/High"},
+              {"label": "Sensitivity", "value": "Low/Medium/High"}
+            ],
+            "recommendations": "Detailed facial skincare routine recommendations with specific steps. Always end with 'Source:' followed by 1 Mayo Clinic page relevant to the specific skin concerns identified. Format as: Source: [Mayo Clinic Page Title] - [Full Mayo Clinic URL]"
+          }
+        `;
+      } else {
+        analysisPrompt = `
+          You are an expert dermatology assistant for medical skin analysis. Please respond with a JSON object.
+          
+          IMPORTANT: First determine if this image contains human skin (face, hands, arms, legs, or any body part).
+          
+          If the image does NOT contain human skin, respond with JSON:
+          {
+            "analysisError": true,
+            "concerns": [],
+            "metrics": [],
+            "recommendations": "Please upload a photo showing skin for medical analysis."
+          }
+          
+          If the image DOES contain human skin, analyze it and respond with JSON:
+          {
+            "analysisError": false,
+            "concerns": ["array of medical concerns like Irregular borders, Color variation, Asymmetry, Size changes, etc."],
+            "metrics": [
+              {"label": "Risk Level", "value": "Low/Medium/High"},
+              {"label": "Urgency", "value": "Monitor/Consult Soon/Seek Immediate Care"}
+            ],
+            "recommendations": "Medical assessment and advice about when to consult a dermatologist. Always end with 'Source:' followed by 1 Mayo Clinic page relevant to the specific skin concerns identified. Format as: Source: [Mayo Clinic Page Title] - [Full Mayo Clinic URL]"
+          }
+        `;
+      }
 
-      console.log("🎯 Performing skincare analysis...");
+      console.log(`🎯 Performing ${ANALYSIS_MODE} analysis...`);
       const startTime = Date.now();
 
       const response = await openai.chat.completions.create({
@@ -116,64 +128,35 @@ exports.analyzeSkincareImage = onCall(
         console.error("❌ JSON parsing failed:", parseError);
         // Fallback response
         analysisData = {
-          analysisType: "error",
-          noFaceDetected: true,
-          skinType: "N/A",
+          analysisError: true,
           concerns: [],
-          moistureLevel: "N/A",
-          oilinessLevel: "N/A",
-          sensitivity: "N/A",
-          recommendations: "We were unable to analyze your image. Please ensure you upload a clear photo of your face for skin analysis.",
-          productSuggestions: []
+          metrics: [],
+          recommendations: ANALYSIS_MODE === "skincare" ? 
+            "We were unable to analyze your image. Please ensure you upload a clear photo of your face for skincare analysis." :
+            "We were unable to analyze your image. Please ensure you upload a clear photo showing skin for medical analysis."
         };
       }
 
-      // Check if no face was detected
-      if (analysisData.noFaceDetected === true || analysisData.analysisType === "error") {
-        console.log("⚠️ No face detected in image");
-        const noFaceResult = {
+      // Check if analysis failed
+      if (analysisData.analysisError === true) {
+        console.log("⚠️ Analysis error detected");
+        const errorResult = {
           id: generateUUID(),
           date: new Date().toISOString(),
-          analysisType: "skincare",
-          // All fields set to indicate no analysis possible
-          riskLevel: "",
-          asymmetry: "",
-          border: "",
-          color: "",
-          diameter: "",
-          evolution: "",
-          skinType: "N/A",
-          concerns: [],
-          moistureLevel: "N/A",
-          oilinessLevel: "N/A",
-          sensitivity: "N/A",
-          productSuggestions: [],
-          recommendations: analysisData.recommendations || "No human skin detected in the image. Please upload a photo showing human skin for analysis.",
+          concerns: analysisData.concerns || [],
+          metrics: analysisData.metrics || [],
+          recommendations: analysisData.recommendations,
           imageData: null
         };
-        return { result: noFaceResult };
+        return { result: errorResult };
       }
 
-      // Format result for frontend - ensure no null values that could crash the app
+      // Format result for frontend with dynamic structure
       const result = {
         id: generateUUID(),
         date: new Date().toISOString(),
-        analysisType: "skincare",
-        // Mole analysis fields (empty strings for skincare mode to prevent null issues)
-        riskLevel: "",
-        asymmetry: "",
-        border: "",
-        color: "",
-        diameter: "",
-        evolution: "",
-        // Skincare analysis fields - always provide default values
-        skinType: analysisData.skinType || "Normal",
         concerns: Array.isArray(analysisData.concerns) ? analysisData.concerns : [],
-        moistureLevel: analysisData.moistureLevel || "Medium",
-        oilinessLevel: analysisData.oilinessLevel || "Medium",
-        sensitivity: analysisData.sensitivity || "Medium",
-        productSuggestions: Array.isArray(analysisData.productSuggestions) ? analysisData.productSuggestions : [],
-        // Common fields
+        metrics: Array.isArray(analysisData.metrics) ? analysisData.metrics : [],
         recommendations: analysisData.recommendations || "Please consult with a professional for personalized advice.",
         imageData: null
       };
@@ -184,28 +167,13 @@ exports.analyzeSkincareImage = onCall(
     } catch (error) {
       console.error("❌ Error during analysis:", error);
       
-      // Return error response in expected format - NEVER return null for required fields
-      const errorMessage = error.message || 'Unknown error';
+      // Return error response in new format
       const errorResult = {
         id: generateUUID(),
         date: new Date().toISOString(),
-        analysisType: "skincare",
-        // Mole analysis fields (use empty strings instead of null to prevent frontend crashes)
-        riskLevel: "",
-        asymmetry: "",
-        border: "",
-        color: "",
-        diameter: "",
-        evolution: "",
-        // Skincare analysis fields - always provide values, never null
-        skinType: "Unknown",
         concerns: ["Analysis Error"],
-        moistureLevel: "Unknown",
-        oilinessLevel: "Unknown",
-        sensitivity: "Unknown",
-        productSuggestions: [],
-        // Common fields
-        recommendations: `Analysis failed: ${errorMessage}. Please try again with a clear photo of your face, ensuring good lighting. If the problem persists, consult with a dermatologist for professional advice.`,
+        metrics: [],
+        recommendations: "An error occurred during analysis. Please try again with a different image or contact support if the issue persists.",
         imageData: null
       };
       
@@ -223,22 +191,12 @@ function generateUUID() {
   });
 }
 
-// ===== RESTORATION INSTRUCTIONS FOR MOLE DETECTION =====
-// TO ENABLE MOLE DETECTION AFTER APP STORE APPROVAL:
+// ===== MODE SWITCHING INSTRUCTIONS =====
+// TO SWITCH ANALYSIS MODES:
 // 
-// 1. Change line 25: const analysisType = "skincare"; 
-//    TO: const analysisType = imageContainsFace ? "skincare" : "mole";
+// Change the ANALYSIS_MODE variable at the top:
+// const ANALYSIS_MODE = "skincare"; // For facial skincare analysis 
+// const ANALYSIS_MODE = "medical";   // For medical skin analysis
 //
-// 2. Add face detection logic before line 25:
-//    const faceDetectionPrompt = `Is there a human face visible in this image? Respond with JSON: {"containsFace": true/false}`;
-//    const faceResponse = await openai.chat.completions.create({...faceDetectionPrompt...});
-//    const imageContainsFace = JSON.parse(faceResponse.choices[0].message.content).containsFace;
-//
-// 3. Add mole analysis prompt after line 63:
-//    if (analysisType === "mole") {
-//      analysisPrompt = `Analyze this mole using ABCDE framework. Return JSON with: analysisType:"mole", riskLevel, asymmetry, border, color, diameter, evolution, recommendations`;
-//    }
-//
-// 4. Update result formatting around line 100 to use analysisType instead of hardcoded "skincare"
-//
-// The frontend will automatically display the correct UI based on analysisType returned from backend.
+// Skincare mode: Requires face photos, analyzes moisture/oiliness/sensitivity
+// Medical mode: Works with any skin area, provides risk assessment and urgency
